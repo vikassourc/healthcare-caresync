@@ -67,7 +67,21 @@ export const appointmentApi = {
   getMyAppointments: () => api.get<ApiResponse<Appointment[]>>('/appointments/my-appointments'),
   getMyPrescriptions: () => api.get<ApiResponse<Prescription[]>>('/appointments/my-prescriptions'),
   getMyNotifications: () => api.get<ApiResponse<any[]>>('/appointments/my-notifications'),
-  getAppointmentDetail: (id: string) => api.get<ApiResponse<any>>(`/appointments/${id}`)
+  getAppointmentDetail: (id: string) => api.get<ApiResponse<any>>(`/appointments/${id}`),
+  downloadPrescriptionPDF: async (appointmentId: string, doctorLastName?: string) => {
+    const res = await api.get(`/appointments/${appointmentId}/prescription-pdf`, {
+      responseType: 'blob'
+    });
+    const blob = new Blob([res.data], { type: 'application/pdf' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `CareSync_Prescription_Dr_${doctorLastName || 'Specialist'}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  }
 };
 
 export const doctorApi = {

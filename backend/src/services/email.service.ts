@@ -1,3 +1,4 @@
+import nodemailer from 'nodemailer';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
 
@@ -8,59 +9,92 @@ export interface EmailAttachment {
   encoding?: string;
 }
 
-const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
-const FROM_ADDRESS = 'CareSync Healthcare <onboarding@resend.dev>';
-
 export class EmailService {
-  /**
-   * Sends email via Resend HTTP API (works on Render — uses HTTPS port 443, not blocked SMTP ports).
-   * Falls back to console log in test/local mode.
-   */
+  private static getTransporter() {
+    const smtpUser = env.SMTP_USER || 'vsrivastava873@gmail.com';
+    const smtpPass = (env.SMTP_PASS || 'tiztxgffnamwgggc').replace(/\s+/g, '');
+
+    return nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: smtpUser,
+        pass: smtpPass
+      }
+    });
+  }
+
   static async sendEmail(
     to: string,
     subject: string,
     html: string,
     attachments?: EmailAttachment[]
   ): Promise<boolean> {
+    // 1. Primary: Nodemailer Gmail Service
     try {
-      const payload: any = {
-        from: FROM_ADDRESS,
-        to: [to],
+      const transporter = this.getTransporter();
+      const fromAddress = env.EMAIL_FROM || env.SMTP_USER || 'vsrivastava873@gmail.com';
+
+      const mailOptions: any = {
+        from: `CareSync Healthcare <${fromAddress}>`,
+        to,
         subject,
         html
       };
 
       if (attachments && attachments.length > 0) {
-        payload.attachments = attachments.map((att) => ({
+        mailOptions.attachments = attachments.map((att) => ({
           filename: att.filename,
-          content: Buffer.isBuffer(att.content)
-            ? att.content.toString('base64')
-            : Buffer.from(att.content as string, 'binary').toString('base64')
+          content: att.content,
+          contentType: att.contentType
         }));
       }
 
-      const response = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${RESEND_API_KEY}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payload)
-      });
-
-      const result: any = await response.json();
-
-      if (!response.ok) {
-        logger.error(`Resend API error for ${to}: ${JSON.stringify(result)}`);
-        return false;
-      }
-
-      logger.info(`[Resend] Email sent to ${to}. ID: ${result.id} | Subject: ${subject}`);
+      const info = await transporter.sendMail(mailOptions);
+      logger.info(`[EmailService] Email successfully delivered to ${to}. MessageId: ${info.messageId}`);
       return true;
-    } catch (error: any) {
-      logger.error(`Failed to deliver email to ${to}: ${error.message}`);
-      return false;
+    } catch (err: any) {
+      logger.warn(`[EmailService] Primary Gmail service error for ${to}: ${err.message}`);
     }
+
+    // 2. Fallback: Resend HTTP API (if configured)
+    const resendKey = process.env.RESEND_API_KEY || '';
+    if (resendKey) {
+      try {
+        const payload: any = {
+          from: 'CareSync Healthcare <onboarding@resend.dev>',
+          to: [to],
+          subject,
+          html
+        };
+
+        if (attachments && attachments.length > 0) {
+          payload.attachments = attachments.map((att) => ({
+            filename: att.filename,
+            content: Buffer.isBuffer(att.content)
+              ? att.content.toString('base64')
+              : Buffer.from(att.content as string, 'binary').toString('base64')
+          }));
+        }
+
+        const response = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${resendKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        });
+
+        if (response.ok) {
+          logger.info(`[EmailService/Resend] Fallback delivery successful to ${to}`);
+          return true;
+        }
+      } catch (err: any) {
+        logger.warn(`[EmailService/Resend] Fallback error: ${err.message}`);
+      }
+    }
+
+    return false;
   }
 
   static templates = {
@@ -94,67 +128,28 @@ export class EmailService {
       prescriptions: any[]
     ) => `
       <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 620px; margin: auto; padding: 28px; background: #FBF9F2; border: 1px solid #E0DDD3; border-radius: 20px;">
-        <div style="background: #2E3B24; padding: 20px; border-radius: 14px; text-align: center; margin-bottom: 24px;">
-          <h2 style="color: #F6F3EA; margin: 0; font-size: 22px;">Thank You for Visiting Dr. ${doctorName}</h2>
-          <p style="color: #A3B18A; font-size: 12px; margin-top: 6px;">Official Digital Prescription & Care Instructions Attached</p>
+        <div style="background: #2E3B24; color: #FFFFFF; padding: 22px; border-radius: 14px; text-align: center; margin-bottom: 24px;">
+          <h2 style="margin: 0; font-size: 22px;">Official Medical Prescription</h2>
+          <p style="color: #ADC296; font-size: 13px; margin-top: 4px;">Dr. ${doctorName} (${specialisation})</p>
         </div>
-
         <p style="color: #23281F; font-size: 14px;">Dear <strong>${patientName}</strong>,</p>
-        <p style="color: #444444; font-size: 14px; line-height: 1.6;">
-          Thank you for consulting with <strong>Dr. ${doctorName}</strong> (${specialisation}) on <strong>${dateStr}</strong>.
-          Your consultation notes have been finalized and your digital prescription is ready.
+        <p style="color: #555555; font-size: 14px; line-height: 1.6;">
+          Thank you for your clinical consultation on <strong>${dateStr}</strong>. Your digitally verified medical prescription is attached to this email as a PDF.
         </p>
-
-        ${
-          diagnosis
-            ? `
-          <div style="background: #FFFFFF; padding: 14px; border-radius: 12px; border: 1px solid #E0DDD3; margin: 16px 0;">
-            <p style="margin: 0; color: #2E3B24; font-size: 12px; font-weight: bold; text-transform: uppercase;">Clinical Diagnosis</p>
-            <p style="margin: 4px 0 0 0; color: #23281F; font-size: 13px;">${diagnosis}</p>
-          </div>
-        `
-            : ''
-        }
-
-        <h3 style="color: #2E3B24; font-size: 15px; margin-top: 20px; margin-bottom: 10px;">Prescription Medications (Rx):</h3>
-        <table style="width: 100%; border-collapse: collapse; background: #FFFFFF; border-radius: 12px; overflow: hidden; border: 1px solid #E0DDD3; font-size: 12px;">
-          <thead>
-            <tr style="background: #4A5D38; color: #FFFFFF; text-align: left;">
-              <th style="padding: 10px 12px;">Medication</th>
-              <th style="padding: 10px 12px;">Dosage</th>
-              <th style="padding: 10px 12px;">Frequency</th>
-              <th style="padding: 10px 12px;">Duration</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${prescriptions
-              .map(
-                (p, idx) => `
-              <tr style="border-bottom: 1px solid #EEEEEE; background: ${idx % 2 === 0 ? '#FAFAFA' : '#FFFFFF'};">
-                <td style="padding: 10px 12px; font-weight: bold; color: #23281F;">
-                  ${p.medicationName} <span style="font-size: 10px; color: #6F8657;">(${p.form || 'Tablet'})</span>
-                  ${p.instructions ? `<br><span style="font-size: 10px; font-weight: normal; color: #777;">Note: ${p.instructions}</span>` : ''}
-                </td>
-                <td style="padding: 10px 12px; color: #555555;">${p.dosage}</td>
-                <td style="padding: 10px 12px; color: #555555;">${p.frequency}</td>
-                <td style="padding: 10px 12px; color: #555555;">${p.durationDays || 7} Days (${p.timing || 'After food'})</td>
-              </tr>
-            `
-              )
-              .join('')}
-          </tbody>
-        </table>
-
-        <div style="background: #E8F5E9; padding: 14px; border-radius: 12px; border: 1px solid #C8E6C9; margin-top: 20px;">
-          <p style="margin: 0; color: #2E7D32; font-size: 12px; font-weight: bold;">📎 PDF Attachment Included</p>
-          <p style="margin: 4px 0 0 0; color: #388E3C; font-size: 11px;">
-            A signed copy of your prescription is attached to this email. You can also view and print your active prescriptions anytime from your CareSync portal.
-          </p>
+        ${diagnosis ? `
+        <div style="background: #FFFFFF; padding: 14px; border-radius: 12px; border: 1px solid #E0DDD3; margin: 16px 0;">
+          <p style="margin: 0; font-size: 13px; color: #2E3B24;"><strong>Diagnosis:</strong> ${diagnosis}</p>
+        </div>` : ''}
+        <div style="background: #FFFFFF; padding: 16px; border-radius: 14px; border: 1px solid #E0DDD3; margin: 20px 0;">
+          <p style="margin: 0 0 10px 0; font-size: 13px; font-weight: bold; color: #2E3B24;">Prescribed Medications:</p>
+          <ul style="margin: 0; padding-left: 20px; color: #555555; font-size: 13px; line-height: 1.8;">
+            ${prescriptions.map((p) => `<li><strong>${p.medicationName} (${p.dosage})</strong> - ${p.frequency}, ${p.timing || 'After food'} for ${p.durationDays} days</li>`).join('')}
+          </ul>
         </div>
-
-        <div style="border-top: 1px solid #E0DDD3; margin-top: 24px; padding-top: 14px; text-align: center; color: #888888; font-size: 11px;">
-          CareSync Healthcare Network • Dr. ${doctorName} Practice Office
+        <div style="background: #E8F5E9; padding: 12px; border-radius: 10px; border: 1px solid #C8E6C9; text-align: center; margin-bottom: 20px;">
+          <p style="margin: 0; font-size: 12.5px; color: #2E7D32; font-weight: bold;">📎 PDF Attachment Included: CareSync_Prescription_Dr_${doctorName}.pdf</p>
         </div>
+        <p style="color: #777777; font-size: 12px; line-height: 1.5;">Daily medication reminders will be sent according to your schedule. You can download this prescription PDF at any time from your patient dashboard.</p>
       </div>
     `,
 

@@ -8,11 +8,15 @@ import { User } from '../models/User';
 export async function authenticate(req: AuthRequest, _res: Response, next: NextFunction): Promise<void> {
   try {
     const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      throw new UnauthorizedError('Authentication token missing or malformed');
+    let token = authHeader?.startsWith('Bearer ') ? authHeader.split(' ')[1] : undefined;
+
+    if (!token && req.query?.token) {
+      token = req.query.token as string;
     }
 
-    const token = authHeader.split(' ')[1];
+    if (!token) {
+      throw new UnauthorizedError('Authentication token missing or malformed');
+    }
     let decoded: JwtPayload;
 
     try {

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft, FileText, Pill, Clock, CheckCircle2, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { doctorApi } from '../../services/api';
+import { doctorApi, appointmentApi } from '../../services/api';
 import { PreVisitSummaryCard } from '../../components/PreVisitSummaryCard';
 import { PostVisitSummaryCard } from '../../components/PostVisitSummaryCard';
 import { StatusPill } from '../../components/StatusPill';
@@ -281,15 +281,16 @@ export const DoctorAppointmentDetail: React.FC = () => {
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                     <span>Active Prescriptions Issued ({prescriptions.length})</span>
                   </h4>
-                  <a
-                    href={`/api/appointments/${id}/prescription-pdf`}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (id) appointmentApi.downloadPrescriptionPDF(id, appointment?.doctorId?.lastName || 'Specialist');
+                    }}
                     className="px-3 py-1.5 rounded-full bg-sage-900 hover:bg-sage-800 text-cream text-[11px] font-bold shadow-sm flex items-center gap-1.5 transition-all"
                   >
                     <Download className="w-3.5 h-3.5 text-sage-300" />
                     <span>Download Signed PDF</span>
-                  </a>
+                  </button>
                 </div>
 
                 <div className="space-y-2">

@@ -111,15 +111,16 @@ export const PatientPrescriptions: React.FC = () => {
 
                 {/* Download PDF & Reminder Alert Strip */}
                 <div className="space-y-2">
-                  <a
-                    href={`/api/appointments/${p.appointmentId}/prescription-pdf`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-full py-2.5 rounded-pill bg-white hover:bg-sage-50 text-sage-900 font-bold text-xs border border-sage-300 shadow-sm flex items-center justify-center gap-2 transition-all"
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (p.appointmentId) appointmentApi.downloadPrescriptionPDF(p.appointmentId, doc?.lastName || 'Specialist');
+                    }}
+                    className="w-full py-2.5 rounded-pill bg-white hover:bg-sage-50 text-sage-900 font-bold text-xs border border-sage-300 shadow-sm flex items-center justify-center gap-2 transition-all cursor-pointer"
                   >
                     <Download className="w-3.5 h-3.5 text-sage-700" />
                     <span>Download Signed Prescription (PDF)</span>
-                  </a>
+                  </button>
 
                   <div className="flex items-center gap-2 text-[11px] text-emerald-800 font-bold bg-emerald-50/80 p-2.5 rounded-2xl border border-emerald-200/50">
                     <Clock className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
