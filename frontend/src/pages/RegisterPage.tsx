@@ -65,7 +65,13 @@ export const RegisterPage: React.FC = () => {
         else if (user.role === UserRole.DOCTOR) navigate('/doctor/dashboard');
       }
     } catch (err: any) {
-      toast.error(err.response?.data?.error?.message || 'Registration failed.');
+      console.error('Registration error:', err);
+      const msg =
+        err.response?.data?.error?.message ||
+        err.response?.data?.message ||
+        err.message ||
+        'Registration failed. Please try again.';
+      toast.error(msg);
     } finally {
       setLoading(false);
     }

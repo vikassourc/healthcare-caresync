@@ -75,7 +75,13 @@ export const LoginPage: React.FC = () => {
         else if (user.role === UserRole.ADMIN) navigate('/admin/dashboard');
       }
     } catch (err: any) {
-      toast.error(err.response?.data?.error?.message || 'Login failed. Please check credentials.');
+      console.error('Login error:', err);
+      const msg =
+        err.response?.data?.error?.message ||
+        err.response?.data?.message ||
+        err.message ||
+        'Login failed. Please check credentials.';
+      toast.error(msg);
     } finally {
       setLoading(false);
       setActiveDemo(null);
