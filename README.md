@@ -6,21 +6,41 @@
 ![MongoDB](https://img.shields.io/badge/MongoDB-7.x-brightgreen.svg)
 ![TailwindCSS](https://img.shields.io/badge/TailwindCSS-3.x-38B2AC.svg)
 
-A production-grade, concurrency-safe healthcare platform featuring separate portals for **Patients**, **Doctors**, and **Administrators**. Built with the MERN stack and designed for senior-level evaluation with robust concurrency controls, background job processing, LLM-powered clinical summaries, and Google Calendar sync.
+A production-grade, concurrency-safe healthcare platform featuring separate portals for **Patients**, **Doctors**, and **Administrators**. Built with the MERN stack and designed for senior-level evaluation with robust concurrency controls, background job processing, LLM-powered clinical summaries, digital PDF prescriptions, and Google Calendar sync.
+
+---
+
+## 🌐 Live Production Deployment
+
+| Service | Live URL | Status |
+|---|---|:---:|
+| **Web App (Frontend)** | [https://healthcare-caresync-frontend.onrender.com](https://healthcare-caresync-frontend.onrender.com) | 🟢 Live |
+| **API Server (Backend)** | [https://healthcare-caresync.onrender.com](https://healthcare-caresync.onrender.com) | 🟢 Live |
+| **Health Check Endpoint** | [https://healthcare-caresync.onrender.com/api/health](https://healthcare-caresync.onrender.com/api/health) | 🟢 200 OK |
+| **GitHub Repository** | [https://github.com/vikassourc/healthcare-caresync](https://github.com/vikassourc/healthcare-caresync) | 🟢 Public |
+
+### 🔐 Live Demo Accounts
+
+| Role | Email | Password | Access Level |
+|---|---|---|---|
+| **Patient** | `vsrivastava2004dec@gmail.com` | `Password123!` | Search doctors, hold slots, AI triage, receive PDF Rx |
+| **Doctor** | `dr.rajesh.sharma@healthcarerx.com` | `Password123!` | Clinical notes, issue prescriptions, Google Calendar sync |
+| **Admin** | `admin@healthcarerx.com` | `Password123!` | Roster management, leave scheduling, notification logs |
 
 ---
 
 ## Table of Contents
-1. [Why MongoDB](#why-mongodb)
-2. [Architecture Overview](#architecture-overview)
-3. [Key Features](#key-features)
-4. [Database Schema & ERD](#database-schema--erd)
-5. [API Documentation (30+ Endpoints)](#api-documentation)
-6. [LLM Prompts & Graceful Fallback](#llm-prompts--graceful-fallback)
-7. [Google Calendar Integration](#google-calendar-integration)
-8. [Local Development & Setup](#local-development--setup)
-9. [Automated Concurrency Testing](#automated-concurrency-testing)
-10. [Future Architectural Improvements](#future-architectural-improvements)
+1. [Live Production Deployment](#-live-production-deployment)
+2. [Why MongoDB](#why-mongodb)
+3. [Architecture Overview](#architecture-overview)
+4. [Key Features](#key-features)
+5. [Database Schema & ERD](#database-schema--erd)
+6. [API Documentation (30+ Endpoints)](#api-documentation)
+7. [LLM Prompts & Graceful Fallback](#llm-prompts--graceful-fallback)
+8. [Google Calendar Integration](#google-calendar-integration)
+9. [Local Development & Setup](#local-development--setup)
+10. [Automated Concurrency Testing](#automated-concurrency-testing)
+11. [Future Architectural Improvements](#future-architectural-improvements)
 
 ---
 
