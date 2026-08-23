@@ -56,42 +56,95 @@ This project's domain model (appointments, specialist slots, doctor rosters, pre
 
 ## Architecture Overview
 
+CareSync is engineered following a modular, multi-tier micro-service styled architecture within a unified TypeScript monorepo codebase:
+
 ```mermaid
 flowchart TB
-    subgraph Frontend["Frontend (React 18 + Vite + Tailwind CSS)"]
-        PP[Patient Portal]
-        DP[Doctor Portal]
-        AP[Admin Portal]
+    subgraph Client["Presentation Tier (React 18 + Vite + Tailwind CSS)"]
+        UI_Patient["Patient Portal\n(Doctor Search, Slot Picker, Symptom Form)"]
+        UI_Doctor["Doctor Portal\n(Clinical Dashboard, AI Triage, Digital Rx)"]
+        UI_Admin["Admin Portal\n(Doctor Roster, Leave Management, Logs)"]
     end
 
-    subgraph Backend["Express API Layer (Node.js + TypeScript)"]
-        Auth[JWT & RBAC Middleware]
-        BookSvc[Booking Service (Atomic Concurrency)]
-        SlotSvc[Slot Service]
-        LLMSvc[LLM Service (Anthropic Wrapper)]
-        NotifSvc[Notification Service (Idempotent)]
-        CalSvc[Calendar Service (OAuth 2.0)]
+    subgraph Gateway["API Gateway & Middleware Layer (Express + Node.js)"]
+        CORS["CORS Dynamic Origin Guard"]
+        AuthMid["JWT Auth & Token Rotation"]
+        RBACMid["Role-Based Access Control (PATIENT / DOCTOR / ADMIN)"]
+        ZodMid["Zod Request Schema Validation"]
+        ErrMid["Centralized Error Handler (E11000 Catch)"]
     end
 
-    subgraph Background["Worker & Queue Layer"]
-        Agenda[Agenda (Mongo-Backed Queue)]
-        EmailJob[Email Sender (Exponential Backoff)]
-        HoldJob[Hold Expiry Monitor (60s)]
-        LLMJob[Summary Generator]
-        LeaveJob[Leave Conflict Processor]
+    subgraph CoreServices["Domain Services Layer"]
+        BookSvc["Booking Service\n(Atomic Hold & 5-min TTL)"]
+        SlotSvc["Slot Service\n(Working Hours & Past Slot Filter)"]
+        PDFSvc["PDF Service\n(Digital Rx PDFKit Generator)"]
+        EmailSvc["Email Service\n(Persistent Pooled SMTP)"]
+        CalSvc["Calendar Service\n(Google OAuth 2.0 & Calendar API)"]
+        LLMSvc["LLM Service\n(Groq/Anthropic AI Clinical Summaries)"]
     end
 
-    subgraph Storage["Data Tier"]
-        MongoDB[(MongoDB 7.0)]
+    subgraph WorkerTier["Async Job & Queue Tier (Agenda.js)"]
+        Q_Hold["Hold Expiry Monitor\n(60s Sweep)"]
+        Q_Email["Email Dispatch Worker\n(Exponential Backoff: 1m, 5m, 30m)"]
+        Q_LLM["LLM Pre/Post Summary Worker"]
+        Q_Leave["Doctor Leave Processor\n(Auto-Cancel & Slot Suggestions)"]
+        Q_Meds["Medication Reminder Worker\n(Daily 9:00 AM Alerts)"]
     end
 
-    Frontend --> Auth
-    Auth --> BookSvc & SlotSvc & LLMSvc & NotifSvc & CalSvc
-    BookSvc & SlotSvc & NotifSvc --> MongoDB
-    BookSvc --> Agenda
-    Agenda --> EmailJob & HoldJob & LLMJob & LeaveJob
-    EmailJob & HoldJob & LLMJob & LeaveJob --> MongoDB
+    subgraph DatabaseTier["Data Persistence Tier (MongoDB 7.0 / Atlas)"]
+        DB_Users[(Users & DoctorProfiles)]
+        DB_Appts[(Appointments & Partial Index)]
+        DB_Notes[(SymptomForms & ClinicalNotes)]
+        DB_Rx[(Prescriptions & Reminders)]
+        DB_Logs[(NotificationLogs & Idempotency)]
+    end
+
+    subgraph External["External Cloud Integrations"]
+        Ext_Gmail["Google SMTP\n(smtp.gmail.com:465 / 587)"]
+        Ext_GCal["Google Calendar API\n(OAuth 2.0 Sync)"]
+        Ext_LLM["Groq / Anthropic Cloud API\n(Llama3-70b / Claude)"]
+    end
+
+    Client --> Gateway
+    Gateway --> CoreServices
+    CoreServices --> DatabaseTier
+    CoreServices --> WorkerTier
+    CoreServices --> External
+    WorkerTier --> DatabaseTier
+    WorkerTier --> External
 ```
+
+### Architectural Layer Highlights:
+- **Presentation Tier**: Built with React 18, Vite 5, Tailwind CSS, and Zustand. Features a signature **Two-Zone Dashboard Layout** (dark contextual hero panel on the left, responsive card grid on the right) with custom initial badges.
+- **Concurrency & Transaction Safety**: Double-booking is physically prevented via MongoDB's unique compound partial index on `{ doctorId: 1, slotStartTime: 1 }` filtered on active states `['HELD', 'CONFIRMED']`, combined with atomic `findOneAndUpdate` operations.
+- **Asynchronous Background Processing**: Agenda.js powers the MongoDB-backed distributed job queue for slot TTL cleanups, background LLM pre-visit symptom summaries, and scheduled 9:00 AM daily medication reminders.
+- **Notification Pipeline**: Direct SMTP delivery with persistent connection pooling for sub-second email dispatch, backed by an idempotent notification log with exponential backoff and dead-letter queueing.
+- **Document Generation & Delivery**: PDFKit dynamically renders signed, clinic-grade PDF prescriptions attached directly to patient follow-up emails and streamed via authenticated blob downloads on the web.
+
+---
+
+## Key Features
+
+### 🩺 For Patients
+- **Specialist Discovery**: Real-time search by doctor name, medical specialty, or clinic bio.
+- **Smart Time Slot Picker**: Dynamic slot availability with automatic hiding of past/expired time slots for the current date.
+- **5-Minute Slot Hold**: Interactive countdown timer reserving the slot while completing clinical symptom intake.
+- **AI Symptom Triage**: Structured symptom and severity intake with AI-generated pre-visit summaries.
+- **Instant Booking Confirmation**: Real-time confirmation emails delivered to personal inboxes formatted in Indian Standard Time (IST).
+- **Digital PDF Prescriptions**: Download signed medical prescriptions directly from the dashboard or receive them as email attachments.
+- **Google Calendar Sync**: Single-click Google Calendar integration for appointment reminders.
+
+### 👨‍⚕️ For Doctors
+- **Clinical Dashboard**: Real-time overview of today's schedule, patient queue, and upcoming appointments.
+- **AI Pre-Visit Clinical Summaries**: LLM-generated patient complaint summaries, urgency triage badges, and suggested diagnostic questions.
+- **Post-Visit Notes & Diagnosis**: Record encounter findings, clinical notes, and follow-up guidance.
+- **Digital Rx Generator**: Prescribe medications with dosage, frequency, timing, and automated 9:00 AM patient reminder schedules.
+- **Instant Consultation Alerts**: Receive automated email notifications when a patient schedules a visit on your calendar.
+
+### 🛡️ For Administrators
+- **Doctor Roster Management**: Create, edit, and configure working hours and slot durations for specialists.
+- **Doctor Leave Scheduling**: Manage leave requests with automatic cancellation of affected bookings and customer notification dispatch with alternative slot suggestions.
+- **Notification Queue & Dead-Letter**: Monitor delivery logs, track retries, and manually trigger notification re-dispatches.
 
 ---
 
