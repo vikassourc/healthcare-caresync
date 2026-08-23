@@ -1,7 +1,11 @@
 import axios from 'axios';
 import { ApiResponse, Appointment, DoctorProfile, Prescription, SlotInfo, User } from '../types';
 
-const API_BASE = import.meta.env.VITE_API_URL || '/api';
+const API_BASE =
+  import.meta.env.VITE_API_URL ||
+  (typeof window !== 'undefined' && (window.location.hostname.includes('onrender.com') || window.location.hostname.includes('vercel.app'))
+    ? 'https://healthcare-caresync.onrender.com/api'
+    : '/api');
 
 export const api = axios.create({
   baseURL: API_BASE,
