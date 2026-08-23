@@ -1,0 +1,81 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: healthcare_mongodb
+    restart: always
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: healthcare
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/healthcare --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mongo-express:
+    image: mongo-express:latest
+    container_name: healthcare_mongo_express
+    restart: always
+    ports:
+      - "8081:8081"
+    environment:
+      ME_CONFIG_MONGODB_SERVER: mongodb
+      ME_CONFIG_MONGODB_PORT: 27017
+      ME_CONFIG_BASICAUTH: "false"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: healthcare_backend
+    restart: always
+    ports:
+      - "5000:5000"
+    environment:
+      - PORT=5000
+      - MONGODB_URI=mongodb://mongodb:27017/healthcare
+      - NODE_ENV=development
+      - JWT_SECRET=development_jwt_secret_key_change_in_production_12345
+      - JWT_REFRESH_SECRET=development_jwt_refresh_secret_key_change_in_production_67890
+      - JWT_EXPIRES_IN=15m
+      - JWT_REFRESH_EXPIRES_IN=7d
+      - FRONTEND_URL=http://localhost:5173
+      - EMAIL_FROM=noreply@healthcareapp.com
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-mock_key}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-mock_client_id}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-mock_client_secret}
+      - GOOGLE_REDIRECT_URI=http://localhost:5000/api/calendar/callback
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: healthcare_frontend
+    restart: always
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=http://localhost:5000/api
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+
+volumes:
+  mongo_data:
+    driver: local
