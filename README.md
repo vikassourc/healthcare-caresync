@@ -14,7 +14,7 @@ A production-grade, concurrency-safe healthcare platform featuring separate port
 
 | Service | Live URL | Status |
 |---|---|:---:|
-| **Web App (Frontend)** | [https://caresync-frontend-rowq.onrender.com](https://caresync-frontend-rowq.onrender.com) | 🟢 Live |
+| **Web App (Frontend)** | [https://healthcare-caresync-frontend.onrender.com](https://healthcare-caresync-frontend.onrender.com) | 🟢 Live |
 | **API Server (Backend)** | [https://healthcare-caresync.onrender.com](https://healthcare-caresync.onrender.com) | 🟢 Live |
 | **Health Check Endpoint** | [https://healthcare-caresync.onrender.com/api/health](https://healthcare-caresync.onrender.com/api/health) | 🟢 200 OK |
 | **GitHub Repository** | [https://github.com/vikassourc/healthcare-caresync](https://github.com/vikassourc/healthcare-caresync) | 🟢 Public |
