@@ -21,10 +21,10 @@ export class CalendarService {
       scope: [
         'https://www.googleapis.com/auth/userinfo.profile',
         'https://www.googleapis.com/auth/userinfo.email',
-        'https://www.googleapis.com/auth/calendar.events'
+        'openid'
       ],
       state: state || 'google_auth_login',
-      prompt: 'consent'
+      prompt: 'select_account'
     });
   }
 
