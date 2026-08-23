@@ -26,6 +26,17 @@ if (env.NODE_ENV !== 'test') {
 }
 
 // API Routes
+app.get('/', (req, res) => {
+  res.json({
+    name: 'CareSync Healthcare API Server',
+    status: 'ONLINE',
+    version: '1.0.0',
+    health: '/api/health',
+    doctors: '/api/doctors',
+    message: 'Backend is running. Open the frontend static site to access the patient and doctor portal UI.'
+  });
+});
+
 app.use('/api', apiRouter);
 
 // Global Error Handler
