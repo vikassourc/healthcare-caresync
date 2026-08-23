@@ -50,7 +50,7 @@ export class BookingService {
       throw new NotFoundError('Doctor profile not found');
     }
 
-    const actualDoctorUserId = doctorProfile.userId;
+    const actualDoctorUserId: any = (doctorProfile.userId as any)._id || doctorProfile.userId;
 
     if (slotStartTime.getTime() <= Date.now()) {
       throw new ValidationError('Cannot book an appointment slot in the past. Please choose an upcoming available time.');
@@ -90,7 +90,7 @@ export class BookingService {
 
       // If existing document was returned that belongs to a different patient
       if (appointment.patientId.toString() !== patientId.toString()) {
-        const nextSlots = await this.getNextAvailableSlots(actualDoctorUserId, slotStartTime);
+        const nextSlots = await this.getNextAvailableSlots(actualDoctorUserId.toString(), slotStartTime);
         throw new ConflictError('This slot is already held or booked by another patient.', {
           nextAvailableSlots: nextSlots
         });
@@ -100,7 +100,7 @@ export class BookingService {
     } catch (error: any) {
       // MongoDB E11000 duplicate key index collision
       if (error.code === 11000) {
-        const nextSlots = await this.getNextAvailableSlots(actualDoctorUserId, slotStartTime);
+        const nextSlots = await this.getNextAvailableSlots(actualDoctorUserId.toString(), slotStartTime);
         throw new ConflictError(
           'This slot was just claimed by another user. Here are the next available slots.',
           { nextAvailableSlots: nextSlots }
