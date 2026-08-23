@@ -3,14 +3,13 @@ import { Appointment } from '../models/Appointment';
 import { DoctorProfile } from '../models/DoctorProfile';
 import { SymptomForm } from '../models/SymptomForm';
 import { User } from '../models/User';
-import { AppointmentStatus, NotificationType, UrgencyLevel } from '../types';
+import { AppointmentStatus, NotificationType, SlotInfo } from '../types';
 import { ConflictError, NotFoundError, ValidationError } from '../utils/errors';
-import { formatDateForDisplay, isWithinWorkingHours } from '../utils/helpers';
-import { SlotService } from './slot.service';
+import { isWithinWorkingHours, formatDateForDisplay } from '../utils/helpers';
+import { agenda } from '../config/agenda';
 import { NotificationService } from './notification.service';
 import { EmailService } from './email.service';
 import { CalendarService } from './calendar.service';
-import { agenda } from '../config/agenda';
 import { logger } from '../utils/logger';
 
 export interface HoldSlotParams {
@@ -21,12 +20,12 @@ export interface HoldSlotParams {
 
 export interface ConfirmAppointmentParams {
   appointmentId: string;
-  patientId: string;
+  patientId: string | Types.ObjectId;
   symptomForm: {
     chiefComplaint: string;
     symptoms: string[];
     duration: string;
-    severity: 'mild' | 'moderate' | 'severe';
+    severity: string;
     additionalNotes?: string;
   };
 }
@@ -43,10 +42,15 @@ export class BookingService {
   static async holdSlot(params: HoldSlotParams) {
     const { patientId, doctorId, slotStartTime } = params;
 
-    const doctorProfile = await DoctorProfile.findOne({ userId: doctorId });
+    const doctorProfile = await DoctorProfile.findOne({
+      $or: [{ userId: doctorId }, { _id: doctorId }]
+    });
+
     if (!doctorProfile) {
       throw new NotFoundError('Doctor profile not found');
     }
+
+    const actualDoctorUserId = doctorProfile.userId;
 
     if (slotStartTime.getTime() <= Date.now()) {
       throw new ValidationError('Cannot book an appointment slot in the past. Please choose an upcoming available time.');
@@ -63,14 +67,14 @@ export class BookingService {
     try {
       const appointment = await Appointment.findOneAndUpdate(
         {
-          doctorId,
+          doctorId: actualDoctorUserId,
           slotStartTime,
           status: { $in: [AppointmentStatus.HELD, AppointmentStatus.CONFIRMED] }
         },
         {
           $setOnInsert: {
             patientId,
-            doctorId,
+            doctorId: actualDoctorUserId,
             slotStartTime,
             slotEndTime,
             status: AppointmentStatus.HELD,
@@ -86,7 +90,7 @@ export class BookingService {
 
       // If existing document was returned that belongs to a different patient
       if (appointment.patientId.toString() !== patientId.toString()) {
-        const nextSlots = await this.getNextAvailableSlots(doctorId, slotStartTime);
+        const nextSlots = await this.getNextAvailableSlots(actualDoctorUserId, slotStartTime);
         throw new ConflictError('This slot is already held or booked by another patient.', {
           nextAvailableSlots: nextSlots
         });
@@ -96,7 +100,7 @@ export class BookingService {
     } catch (error: any) {
       // MongoDB E11000 duplicate key index collision
       if (error.code === 11000) {
-        const nextSlots = await this.getNextAvailableSlots(doctorId, slotStartTime);
+        const nextSlots = await this.getNextAvailableSlots(actualDoctorUserId, slotStartTime);
         throw new ConflictError(
           'This slot was just claimed by another user. Here are the next available slots.',
           { nextAvailableSlots: nextSlots }
@@ -147,63 +151,72 @@ export class BookingService {
     // Enqueue async background jobs
     await agenda.now('generate-pre-visit-summary', { appointmentId: appointment._id.toString() });
 
-    // Fetch user details for notification
-    const [patient, doctor] = await Promise.all([
-      User.findById(patientId),
-      User.findById(appointment.doctorId)
-    ]);
+    // Fetch user details for notification (supporting both User ID and DoctorProfile ID)
+    let patient = await User.findById(patientId);
+    let doctor = await User.findById(appointment.doctorId);
 
-    if (patient && doctor) {
-      const dateDisplay = formatDateForDisplay(appointment.slotStartTime);
-      const patientSubject = `Appointment Confirmed: Dr. ${doctor.lastName} - ${dateDisplay}`;
+    if (!doctor) {
+      const docProfile = await DoctorProfile.findById(appointment.doctorId);
+      if (docProfile) {
+        doctor = await User.findById(docProfile.userId);
+      }
+    }
+
+    const doctorLastName = doctor?.lastName || 'Specialist';
+    const doctorFullName = doctor ? `Dr. ${doctor.firstName} ${doctor.lastName}` : 'Dr. Specialist';
+    const patientFullName = patient ? `${patient.firstName} ${patient.lastName}` : 'Valued Patient';
+    const dateDisplay = formatDateForDisplay(appointment.slotStartTime);
+
+    // 1. Direct immediate send to Patient's personal registered email
+    if (patient?.email) {
+      const patientSubject = `Appointment Confirmed: ${doctorFullName} - ${dateDisplay}`;
       const emailHtml = EmailService.templates.bookingConfirmation(
-        `${patient.firstName} ${patient.lastName}`,
-        `${doctor.firstName} ${doctor.lastName}`,
+        patientFullName,
+        doctorFullName,
         dateDisplay
       );
 
-      // 1. Direct immediate send to Patient's personal registered email
-      if (patient.email) {
-        logger.info(`[Booking Confirmation] Sending direct email to Patient: ${patient.email}`);
-        EmailService.sendEmail(patient.email, patientSubject, emailHtml).catch((err) => {
-          logger.error(`Error delivering patient confirmation email: ${err.message}`);
-        });
-      }
+      logger.info(`[Booking Confirmation] Dispatching email to Patient: ${patient.email}`);
+      EmailService.sendEmail(patient.email, patientSubject, emailHtml).catch((err) => {
+        logger.error(`Error delivering patient confirmation email: ${err.message}`);
+      });
 
-      await NotificationService.queueNotification({
+      NotificationService.queueNotification({
         recipientId: patient._id,
         type: NotificationType.BOOKING_CONFIRM,
         subject: patientSubject,
         body: emailHtml,
         dedupSuffix: appointment._id.toString()
-      });
+      }).catch(() => {});
+    }
 
-      // 2. Direct immediate send to Doctor's personal registered email
-      const doctorSubject = `New Patient Consultation Scheduled: ${patient.firstName} ${patient.lastName} (${dateDisplay})`;
+    // 2. Direct immediate send to Doctor's personal registered email
+    if (doctor?.email) {
+      const doctorSubject = `New Patient Consultation Scheduled: ${patientFullName} (${dateDisplay})`;
       const doctorAlertHtml = EmailService.templates.doctorNewBookingAlert(
-        `${doctor.firstName} ${doctor.lastName}`,
-        `${patient.firstName} ${patient.lastName}`,
+        doctorFullName,
+        patientFullName,
         dateDisplay,
         symptomForm.chiefComplaint,
         symptomForm.severity
       );
 
-      if (doctor.email) {
-        logger.info(`[Booking Alert] Sending direct email to Doctor: ${doctor.email}`);
-        EmailService.sendEmail(doctor.email, doctorSubject, doctorAlertHtml).catch((err) => {
-          logger.error(`Error delivering doctor alert email: ${err.message}`);
-        });
-      }
+      logger.info(`[Booking Alert] Dispatching email to Doctor: ${doctor.email}`);
+      EmailService.sendEmail(doctor.email, doctorSubject, doctorAlertHtml).catch((err) => {
+        logger.error(`Error delivering doctor alert email: ${err.message}`);
+      });
 
-      await NotificationService.queueNotification({
+      NotificationService.queueNotification({
         recipientId: doctor._id,
         type: NotificationType.BOOKING_CONFIRM,
         subject: doctorSubject,
         body: doctorAlertHtml,
         dedupSuffix: `doc_${appointment._id.toString()}`
-      });
+      }).catch(() => {});
+    }
 
-      // Async Google Calendar Event Sync (non-blocking)
+    // Async Google Calendar Event Sync (non-blocking)
+    if (doctor && patient) {
       CalendarService.syncAppointmentEvent(appointment, doctor, patient).then((eventId) => {
         if (eventId) {
           Appointment.findByIdAndUpdate(appointment._id, { googleCalendarEventId: eventId }).exec();
@@ -214,61 +227,80 @@ export class BookingService {
     return appointment;
   }
 
+  /**
+   * Cancels an appointment safely.
+   */
   static async cancelAppointment(appointmentId: string, userId: string, reason?: string) {
-    const appointment = await Appointment.findOneAndUpdate(
-      {
-        _id: appointmentId,
-        $or: [{ patientId: userId }, { doctorId: userId }],
-        status: { $in: [AppointmentStatus.HELD, AppointmentStatus.CONFIRMED] }
-      },
-      {
-        $set: {
-          status: AppointmentStatus.CANCELLED,
-          cancellationReason: reason || 'Cancelled by user'
-        },
-        $unset: { holdExpiresAt: '' }
-      },
-      { new: true }
-    );
+    const appointment = await Appointment.findOne({
+      _id: appointmentId,
+      $or: [{ patientId: userId }, { doctorId: userId }],
+      status: { $in: [AppointmentStatus.HELD, AppointmentStatus.CONFIRMED] }
+    });
 
     if (!appointment) {
-      throw new NotFoundError('Active appointment not found or cannot be cancelled');
+      throw new NotFoundError('Active appointment not found or already cancelled');
     }
 
-    // Notify patient
-    const [patient, doctor] = await Promise.all([
-      User.findById(appointment.patientId),
-      User.findById(appointment.doctorId)
-    ]);
+    appointment.status = AppointmentStatus.CANCELLED;
+    appointment.cancellationReason = reason || 'Cancelled by user';
+    await appointment.save();
 
-    if (patient && doctor) {
+    // Notify other party
+    const isPatientCancelling = appointment.patientId.toString() === userId;
+    const notifyUserId = isPatientCancelling ? appointment.doctorId : appointment.patientId;
+    const otherUser = await User.findById(notifyUserId);
+    const cancellingUser = await User.findById(userId);
+
+    if (otherUser && cancellingUser) {
       const dateDisplay = formatDateForDisplay(appointment.slotStartTime);
+      const emailHtml = EmailService.templates.cancellationNotice(
+        `${otherUser.firstName} ${otherUser.lastName}`,
+        `${cancellingUser.firstName} ${cancellingUser.lastName}`,
+        dateDisplay,
+        reason
+      );
+
+      if (otherUser.email) {
+        EmailService.sendEmail(
+          otherUser.email,
+          `Appointment Cancelled: Consultation on ${dateDisplay}`,
+          emailHtml
+        ).catch(() => {});
+      }
+
       await NotificationService.queueNotification({
-        recipientId: patient._id,
+        recipientId: otherUser._id,
         type: NotificationType.CANCELLATION,
-        subject: `Appointment Cancelled: Dr. ${doctor.lastName} - ${dateDisplay}`,
-        body: EmailService.templates.cancellationNotice(
-          `${patient.firstName} ${patient.lastName}`,
-          `${doctor.firstName} ${doctor.lastName}`,
-          dateDisplay,
-          reason
-        ),
-        dedupSuffix: `cancel-${appointment._id}`
+        subject: `Appointment Cancelled: Consultation on ${dateDisplay}`,
+        body: emailHtml,
+        dedupSuffix: `cancel_${appointment._id.toString()}`
       });
     }
 
     return appointment;
   }
 
-  static async getNextAvailableSlots(doctorId: string | Types.ObjectId, afterTime: Date, limit: number = 3) {
-    try {
-      const dateStr = afterTime.toISOString().split('T')[0];
-      const slots = await SlotService.getAvailableSlots(doctorId, dateStr);
-      return slots
-        .filter((s) => s.available && s.startTime.getTime() > afterTime.getTime())
-        .slice(0, limit);
-    } catch {
-      return [];
+  /**
+   * Helper: computes the next 3 available slots for conflict resolution.
+   */
+  static async getNextAvailableSlots(doctorId: string | Types.ObjectId, afterDate: Date): Promise<SlotInfo[]> {
+    const nextSlots: SlotInfo[] = [];
+    const checkDate = new Date(afterDate);
+
+    for (let dayOffset = 0; dayOffset < 7 && nextSlots.length < 3; dayOffset++) {
+      checkDate.setDate(checkDate.getDate() + (dayOffset === 0 ? 0 : 1));
+      const dateStr = checkDate.toISOString().split('T')[0];
+
+      try {
+        const { SlotService } = await import('./slot.service');
+        const slots = await SlotService.getAvailableSlots(doctorId, dateStr);
+        const available = slots.filter((s) => s.available && s.startTime > afterDate);
+        nextSlots.push(...available.slice(0, 3 - nextSlots.length));
+      } catch {
+        // continue
+      }
     }
+
+    return nextSlots;
   }
 }
