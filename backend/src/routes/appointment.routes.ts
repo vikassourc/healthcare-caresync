@@ -20,7 +20,7 @@ const symptomDetailSchema = z.object({
   chiefComplaint: z.string().min(1),
   symptoms: z.array(z.string()).optional().default([]),
   duration: z.string().min(1),
-  severity: z.enum(['mild', 'moderate', 'severe']).default('moderate'),
+  severity: z.string().transform((val) => val.toLowerCase()).pipe(z.enum(['mild', 'moderate', 'severe'])).default('moderate'),
   additionalNotes: z.string().optional()
 });
 
