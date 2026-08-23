@@ -31,7 +31,9 @@ export const LoginPage: React.FC = () => {
     const googleAuth = searchParams.get('googleAuth');
 
     if (googleAuth === 'success' && token && refreshToken) {
+      localStorage.setItem('access_token', token);
       localStorage.setItem('accessToken', token);
+      localStorage.setItem('refresh_token', refreshToken);
       localStorage.setItem('refreshToken', refreshToken);
       authApi
         .getMe()
