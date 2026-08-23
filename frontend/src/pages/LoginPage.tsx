@@ -96,11 +96,23 @@ export const LoginPage: React.FC = () => {
       const res = await calendarApi.getAuthUrl();
       if (res.data.data?.url) {
         window.location.href = res.data.data.url;
+        return;
       }
-    } catch {
-      toast.error('Google Sign-In service unavailable. Please use email sign-in.');
-      setGoogleLoading(false);
+    } catch (e) {
+      console.warn('API getAuthUrl fallback triggered:', e);
     }
+
+    const clientId = '719339249483-lop232t98jcufamsfhg556echunu8ecg.apps.googleusercontent.com';
+    const redirectUri = 'https://healthcare-caresync.onrender.com/api/calendar/callback';
+    const origin = window.location.origin;
+    const state = btoa(JSON.stringify({ origin, userId: 'anonymous', ts: Date.now() }));
+    const fallbackUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(
+      redirectUri
+    )}&response_type=code&scope=${encodeURIComponent(
+      'https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email openid'
+    )}&state=${state}&access_type=offline`;
+
+    window.location.href = fallbackUrl;
   };
 
   const handle1ClickDemoLogin = (role: 'patient' | 'doctor' | 'admin') => {
