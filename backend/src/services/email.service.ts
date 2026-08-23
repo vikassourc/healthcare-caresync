@@ -15,13 +15,18 @@ export class EmailService {
     const smtpPass = (env.SMTP_PASS || 'tiztxgffnamwgggc').replace(/\s+/g, '');
 
     if (smtpUser && smtpPass) {
+      // Use port 587 with STARTTLS — port 465 is blocked on many cloud hosts including Render
       return nodemailer.createTransport({
-        host: env.SMTP_HOST || 'smtp.gmail.com',
-        port: env.SMTP_PORT || 465,
-        secure: true,
+        host: 'smtp.gmail.com',
+        port: 587,
+        secure: false,         // STARTTLS (upgrades to TLS after connect)
+        requireTLS: true,      // Force TLS upgrade
         auth: {
           user: smtpUser,
           pass: smtpPass
+        },
+        tls: {
+          rejectUnauthorized: false
         }
       });
     }
