@@ -1,5 +1,5 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Activity,
   ArrowRight,
@@ -14,10 +14,44 @@ import {
   Zap,
   Globe
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { useAuth } from '../hooks/useAuth';
+import { authApi } from '../services/api';
+import { UserRole } from '../types';
 
 export const LandingPage: React.FC = () => {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, login } = useAuth();
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const token = searchParams.get('token');
+    const refreshToken = searchParams.get('refreshToken');
+    const googleAuth = searchParams.get('googleAuth');
+
+    if (googleAuth === 'success' && token && refreshToken) {
+      localStorage.setItem('access_token', token);
+      localStorage.setItem('accessToken', token);
+      localStorage.setItem('refresh_token', refreshToken);
+      localStorage.setItem('refreshToken', refreshToken);
+      authApi
+        .getMe()
+        .then((res) => {
+          if (res.data.success && res.data.data) {
+            login({ accessToken: token, refreshToken }, res.data.data);
+            toast.success(`Welcome to CareSync, ${res.data.data.firstName}!`);
+            if (res.data.data.role === UserRole.PATIENT) navigate('/patient/dashboard');
+            else if (res.data.data.role === UserRole.DOCTOR) navigate('/doctor/dashboard');
+            else if (res.data.data.role === UserRole.ADMIN) navigate('/admin/dashboard');
+          }
+        })
+        .catch(() => {
+          toast.error('Google authentication failed. Please try again.');
+        });
+    } else if (googleAuth === 'failed') {
+      toast.error('Google Sign-In was cancelled or failed.');
+    }
+  }, [searchParams, login, navigate]);
 
   return (
     <div className="relative min-h-screen bg-cream overflow-hidden text-ink">

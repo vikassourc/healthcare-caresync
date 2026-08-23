@@ -34,7 +34,7 @@ export class CalendarController {
     }
 
     if (!code) {
-      res.redirect(`${targetOrigin}/login?googleAuth=failed`);
+      res.redirect(`${targetOrigin}/?googleAuth=failed`);
       return;
     }
 
@@ -44,12 +44,12 @@ export class CalendarController {
       const role = result.user.role.toLowerCase();
       // Redirect to frontend with auth payload
       res.redirect(
-        `${targetOrigin}/login?googleAuth=success&token=${result.accessToken}&refreshToken=${result.refreshToken}&role=${role}`
+        `${targetOrigin}/?googleAuth=success&token=${result.accessToken}&refreshToken=${result.refreshToken}&role=${role}`
       );
       return;
     }
 
-    res.redirect(`${targetOrigin}/login?googleAuth=failed`);
+    res.redirect(`${targetOrigin}/?googleAuth=failed`);
   }
 
   static async disconnect(req: AuthRequest, res: Response) {
