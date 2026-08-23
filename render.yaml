@@ -2,7 +2,7 @@ services:
   # 1. Backend Web Service
   - type: web
     name: caresync-backend
-    env: node
+    runtime: node
     plan: free
     rootDir: backend
     buildCommand: npm install && npm run build
@@ -13,7 +13,7 @@ services:
       - key: PORT
         value: 5000
       - key: MONGODB_URI
-        sync: false # Set in Render Dashboard
+        sync: false
       - key: JWT_SECRET
         generateValue: true
       - key: JWT_REFRESH_SECRET
@@ -23,11 +23,11 @@ services:
       - key: JWT_REFRESH_EXPIRES_IN
         value: 7d
       - key: FRONTEND_URL
-        sync: false # Set to your frontend Render/Vercel URL
+        sync: false
       - key: LLM_PROVIDER
         value: groq
       - key: OPENSOURCE_API_KEY
-        sync: false # Set your Groq API key in Render Dashboard
+        sync: false
       - key: OPENSOURCE_MODEL
         value: llama-3.1-8b-instant
       - key: GOOGLE_CLIENT_ID
@@ -50,10 +50,8 @@ services:
         sync: false
 
   # 2. Frontend Static Site
-  - type: web
+  - type: static
     name: caresync-frontend
-    env: static
-    plan: free
     rootDir: frontend
     buildCommand: npm install && npm run build
     staticPublishPath: ./dist
@@ -63,4 +61,4 @@ services:
         destination: /index.html
     envVars:
       - key: VITE_API_URL
-        sync: false # Set to your caresync-backend.onrender.com/api URL
+        sync: false
