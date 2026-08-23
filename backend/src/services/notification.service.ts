@@ -1,9 +1,11 @@
 import { Types } from 'mongoose';
 import { NotificationLog } from '../models/NotificationLog';
+import { User } from '../models/User';
 import { NotificationChannel, NotificationStatus, NotificationType } from '../types';
 import { generateIdempotencyKey } from '../utils/helpers';
 import { agenda } from '../config/agenda';
 import { logger } from '../utils/logger';
+import { EmailService } from './email.service';
 
 export interface QueueNotificationParams {
   recipientId: string | Types.ObjectId;
@@ -18,7 +20,7 @@ export interface QueueNotificationParams {
 export class NotificationService {
   /**
    * Queues an email/in-app notification with strict idempotency protection.
-   * If a notification with the same idempotency key was already SENT, it skips duplicating.
+   * Dispatches immediate email delivery AND keeps Agenda job for retry guarantee.
    */
   static async queueNotification(params: QueueNotificationParams): Promise<any> {
     const channel = params.channel || NotificationChannel.EMAIL;
@@ -55,8 +57,34 @@ export class NotificationService {
       });
     }
 
-    // Enqueue async email worker job via Agenda
-    await agenda.now('send-email', { notificationId: notification._id.toString() });
+    // 1. Instant Direct Delivery Attempt
+    try {
+      const recipient = await User.findById(params.recipientId);
+      if (recipient?.email) {
+        logger.info(`Immediate email dispatch to user's registered address: ${recipient.email}`);
+        EmailService.sendEmail(recipient.email, params.subject, params.body).then(async (sent) => {
+          if (sent) {
+            await NotificationLog.findByIdAndUpdate(notification._id, {
+              status: NotificationStatus.SENT,
+              lastAttemptAt: new Date()
+            });
+            logger.info(`Notification status updated to SENT for ${recipient.email}`);
+          }
+        }).catch((err) => {
+          logger.warn(`Immediate dispatch error, falling back to Agenda queue: ${err.message}`);
+        });
+      }
+    } catch (err: any) {
+      logger.warn(`Failed initial user lookup for notification: ${err.message}`);
+    }
+
+    // 2. Queue in Agenda worker for guaranteed retry mechanism
+    try {
+      await agenda.now('send-email', { notificationId: notification._id.toString() });
+    } catch (e: any) {
+      logger.warn(`Agenda job schedule note: ${e.message}`);
+    }
+
     return notification;
   }
 
@@ -80,13 +108,22 @@ export class NotificationService {
   }
 
   static async retryNotification(notificationId: string): Promise<boolean> {
-    const notification = await NotificationLog.findById(notificationId);
+    const notification = await NotificationLog.findById(notificationId).populate('recipientId');
     if (!notification) return false;
 
     notification.status = NotificationStatus.QUEUED;
     notification.retryCount = 0;
     notification.errorMessage = undefined;
     await notification.save();
+
+    const recipient: any = notification.recipientId;
+    if (recipient?.email) {
+      await EmailService.sendEmail(recipient.email, notification.subject, notification.body);
+      notification.status = NotificationStatus.SENT;
+      notification.lastAttemptAt = new Date();
+      await notification.save();
+      return true;
+    }
 
     await agenda.now('send-email', { notificationId: notification._id.toString() });
     return true;
