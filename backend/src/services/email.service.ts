@@ -11,14 +11,17 @@ export interface EmailAttachment {
 
 export class EmailService {
   private static getTransporter() {
-    if (env.SMTP_USER && env.SMTP_PASS) {
+    const smtpUser = env.SMTP_USER || 'vsrivastava873@gmail.com';
+    const smtpPass = (env.SMTP_PASS || 'tiztxgffnamwgggc').replace(/\s+/g, '');
+
+    if (smtpUser && smtpPass) {
       return nodemailer.createTransport({
         host: env.SMTP_HOST || 'smtp.gmail.com',
         port: env.SMTP_PORT || 465,
-        secure: env.SMTP_SECURE,
+        secure: true,
         auth: {
-          user: env.SMTP_USER,
-          pass: env.SMTP_PASS
+          user: smtpUser,
+          pass: smtpPass
         }
       });
     }
@@ -46,28 +49,26 @@ export class EmailService {
   ): Promise<boolean> {
     try {
       const transporter = this.getTransporter();
-
-      if (transporter) {
-        const fromAddress = env.SMTP_USER ? `CareSync Health <${env.SMTP_USER}>` : env.EMAIL_FROM;
-        const info = await transporter.sendMail({
-          from: fromAddress,
-          to,
-          subject,
-          html,
-          attachments: attachments?.map((a) => ({
-            filename: a.filename,
-            content: a.content,
-            contentType: a.contentType || 'application/pdf'
-          }))
-        });
-
-        logger.info(`[REAL EMAIL DELIVERED] To: ${to} | Subject: "${subject}" | MessageId: ${info.messageId}`);
+      if (!transporter) {
+        logger.warn(`No email transporter configured. Email to ${to} printed to console.`);
+        logger.info(`[MOCK EMAIL TO ${to}] Subject: ${subject}`);
         return true;
       }
 
-      // Local / simulated mode if SMTP is not yet configured
-      logger.info(`[SIMULATED EMAIL DISPATCHED] To: ${to} | Subject: "${subject}" | Attachments: ${attachments?.length || 0}`);
-      logger.debug(`[EMAIL CONTENT PREVIEW]: ${html.replace(/<[^>]*>?/gm, ' ').substring(0, 180)}...`);
+      const fromAddress = env.EMAIL_FROM || env.SMTP_USER || 'vsrivastava873@gmail.com';
+      const info = await transporter.sendMail({
+        from: `CareSync Healthcare <${fromAddress}>`,
+        to,
+        subject,
+        html,
+        attachments: attachments?.map((att) => ({
+          filename: att.filename,
+          content: att.content,
+          contentType: att.contentType
+        }))
+      });
+
+      logger.info(`Email successfully dispatched to ${to}. MessageId: ${info.messageId} (Response: ${info.response})`);
       return true;
     } catch (error: any) {
       logger.error(`Failed to deliver email to ${to}: ${error.message}`, error);
