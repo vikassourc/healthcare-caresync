@@ -1,4 +1,3 @@
-import nodemailer from 'nodemailer';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
 
@@ -9,43 +8,14 @@ export interface EmailAttachment {
   encoding?: string;
 }
 
+const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
+const FROM_ADDRESS = 'CareSync Healthcare <onboarding@resend.dev>';
+
 export class EmailService {
-  private static getTransporter() {
-    const smtpUser = env.SMTP_USER || 'vsrivastava873@gmail.com';
-    const smtpPass = (env.SMTP_PASS || 'tiztxgffnamwgggc').replace(/\s+/g, '');
-
-    if (smtpUser && smtpPass) {
-      // Use port 587 with STARTTLS — port 465 is blocked on many cloud hosts including Render
-      return nodemailer.createTransport({
-        host: 'smtp.gmail.com',
-        port: 587,
-        secure: false,         // STARTTLS (upgrades to TLS after connect)
-        requireTLS: true,      // Force TLS upgrade
-        auth: {
-          user: smtpUser,
-          pass: smtpPass
-        },
-        tls: {
-          rejectUnauthorized: false
-        }
-      });
-    }
-
-    if (env.SENDGRID_API_KEY) {
-      return nodemailer.createTransport({
-        host: 'smtp.sendgrid.net',
-        port: 587,
-        secure: false,
-        auth: {
-          user: 'apikey',
-          pass: env.SENDGRID_API_KEY
-        }
-      });
-    }
-
-    return null;
-  }
-
+  /**
+   * Sends email via Resend HTTP API (works on Render — uses HTTPS port 443, not blocked SMTP ports).
+   * Falls back to console log in test/local mode.
+   */
   static async sendEmail(
     to: string,
     subject: string,
@@ -53,30 +23,42 @@ export class EmailService {
     attachments?: EmailAttachment[]
   ): Promise<boolean> {
     try {
-      const transporter = this.getTransporter();
-      if (!transporter) {
-        logger.warn(`No email transporter configured. Email to ${to} printed to console.`);
-        logger.info(`[MOCK EMAIL TO ${to}] Subject: ${subject}`);
-        return true;
+      const payload: any = {
+        from: FROM_ADDRESS,
+        to: [to],
+        subject,
+        html
+      };
+
+      if (attachments && attachments.length > 0) {
+        payload.attachments = attachments.map((att) => ({
+          filename: att.filename,
+          content: Buffer.isBuffer(att.content)
+            ? att.content.toString('base64')
+            : Buffer.from(att.content as string, 'binary').toString('base64')
+        }));
       }
 
-      const fromAddress = env.EMAIL_FROM || env.SMTP_USER || 'vsrivastava873@gmail.com';
-      const info = await transporter.sendMail({
-        from: `CareSync Healthcare <${fromAddress}>`,
-        to,
-        subject,
-        html,
-        attachments: attachments?.map((att) => ({
-          filename: att.filename,
-          content: att.content,
-          contentType: att.contentType
-        }))
+      const response = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${RESEND_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
       });
 
-      logger.info(`Email successfully dispatched to ${to}. MessageId: ${info.messageId} (Response: ${info.response})`);
+      const result: any = await response.json();
+
+      if (!response.ok) {
+        logger.error(`Resend API error for ${to}: ${JSON.stringify(result)}`);
+        return false;
+      }
+
+      logger.info(`[Resend] Email sent to ${to}. ID: ${result.id} | Subject: ${subject}`);
       return true;
     } catch (error: any) {
-      logger.error(`Failed to deliver email to ${to}: ${error.message}`, error);
+      logger.error(`Failed to deliver email to ${to}: ${error.message}`);
       return false;
     }
   }
