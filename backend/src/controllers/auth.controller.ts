@@ -28,7 +28,7 @@ export class AuthController {
 
     await user.save();
 
-    // If doctor, initialize profile
+    // If doctor, initialize profile & send doctor welcome
     if (assignedRole === UserRole.DOCTOR) {
       await DoctorProfile.create({
         userId: user._id,
@@ -44,6 +44,17 @@ export class AuthController {
       EmailService.sendEmail(
         user.email,
         `Welcome to CareSync Platform, Dr. ${user.lastName}`,
+        welcomeHtml
+      ).catch(() => {});
+    } else {
+      // Send Patient Welcome email to their personal registered email address
+      const { EmailService } = await import('../services/email.service');
+      const welcomeHtml = EmailService.templates.patientWelcome(
+        `${user.firstName} ${user.lastName}`
+      );
+      EmailService.sendEmail(
+        user.email,
+        `Welcome to CareSync Healthcare, ${user.firstName}!`,
         welcomeHtml
       ).catch(() => {});
     }

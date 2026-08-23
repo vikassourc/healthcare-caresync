@@ -244,6 +244,23 @@ export class EmailService {
           </ul>
         </div>
       </div>
+    `,
+
+    patientWelcome: (patientName: string) => `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 24px; background: #FBF9F2; border: 1px solid #E0DDD3; border-radius: 16px;">
+        <div style="background: #2E3B24; color: #FFFFFF; padding: 20px; border-radius: 12px; text-align: center; margin-bottom: 20px;">
+          <h2 style="margin: 0; font-size: 22px;">Welcome to CareSync</h2>
+          <p style="color: #ADC296; font-size: 13px; margin-top: 4px;">Healthcare Appointment & Follow-Up Portal</p>
+        </div>
+        <p style="color: #23281F; font-size: 14px;">Dear <strong>${patientName}</strong>,</p>
+        <p style="color: #555555; font-size: 14px; line-height: 1.6;">
+          Your CareSync patient account has been created successfully. You can now browse verified specialists, book appointments with instant Google Calendar sync, and receive digital PDF prescriptions after your visits.
+        </p>
+        <div style="background: #FFFFFF; padding: 16px; border-radius: 12px; border: 1px solid #E0DDD3; margin: 16px 0; text-align: center;">
+          <p style="margin: 0; font-size: 14px; color: #2E3B24; font-weight: bold;">Ready to schedule your first consultation?</p>
+          <p style="margin: 8px 0 0 0; font-size: 13px; color: #555555;">Log in anytime to view available specialist time slots.</p>
+        </div>
+      </div>
     `
   };
 }
