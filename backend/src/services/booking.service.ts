@@ -151,21 +151,31 @@ export class BookingService {
 
     if (patient && doctor) {
       const dateDisplay = formatDateForDisplay(appointment.slotStartTime);
+      const patientSubject = `Appointment Confirmed: Dr. ${doctor.lastName} - ${dateDisplay}`;
       const emailHtml = EmailService.templates.bookingConfirmation(
         `${patient.firstName} ${patient.lastName}`,
         `${doctor.firstName} ${doctor.lastName}`,
         dateDisplay
       );
 
+      // 1. Direct immediate send to Patient's personal registered email
+      if (patient.email) {
+        logger.info(`[Booking Confirmation] Sending direct email to Patient: ${patient.email}`);
+        EmailService.sendEmail(patient.email, patientSubject, emailHtml).catch((err) => {
+          logger.error(`Error delivering patient confirmation email: ${err.message}`);
+        });
+      }
+
       await NotificationService.queueNotification({
         recipientId: patient._id,
         type: NotificationType.BOOKING_CONFIRM,
-        subject: `Appointment Confirmed: Dr. ${doctor.lastName} - ${dateDisplay}`,
+        subject: patientSubject,
         body: emailHtml,
         dedupSuffix: appointment._id.toString()
       });
 
-      // Also send real notification email directly to Doctor's registered email
+      // 2. Direct immediate send to Doctor's personal registered email
+      const doctorSubject = `New Patient Consultation Scheduled: ${patient.firstName} ${patient.lastName} (${dateDisplay})`;
       const doctorAlertHtml = EmailService.templates.doctorNewBookingAlert(
         `${doctor.firstName} ${doctor.lastName}`,
         `${patient.firstName} ${patient.lastName}`,
@@ -174,10 +184,17 @@ export class BookingService {
         symptomForm.severity
       );
 
+      if (doctor.email) {
+        logger.info(`[Booking Alert] Sending direct email to Doctor: ${doctor.email}`);
+        EmailService.sendEmail(doctor.email, doctorSubject, doctorAlertHtml).catch((err) => {
+          logger.error(`Error delivering doctor alert email: ${err.message}`);
+        });
+      }
+
       await NotificationService.queueNotification({
         recipientId: doctor._id,
         type: NotificationType.BOOKING_CONFIRM,
-        subject: `New Patient Consultation Scheduled: ${patient.firstName} ${patient.lastName} (${dateDisplay})`,
+        subject: doctorSubject,
         body: doctorAlertHtml,
         dedupSuffix: `doc_${appointment._id.toString()}`
       });
