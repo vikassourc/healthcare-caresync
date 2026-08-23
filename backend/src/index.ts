@@ -41,6 +41,25 @@ app.get('/', (req, res) => {
 
 app.use('/api', apiRouter);
 
+// SMTP Debug endpoint to verify email works from Render's servers
+app.get('/api/debug/smtp-test', async (req: any, res: any) => {
+  try {
+    const { EmailService } = await import('./services/email.service');
+    const { env } = await import('./config/env');
+    const testEmail = (req.query.to as string) || 'vsrivastava2004dec@gmail.com';
+    const smtpUser = env.SMTP_USER || 'vsrivastava873@gmail.com';
+    const smtpPass = env.SMTP_PASS || 'tiztxgffnamwgggc';
+    const sent = await EmailService.sendEmail(
+      testEmail,
+      'CareSync SMTP Test from Render Server',
+      `<div style="font-family:Arial;padding:20px;"><h2>SMTP Test Email</h2><p>This email was sent directly from the Render backend server at <strong>${new Date().toISOString()}</strong></p><p>SMTP User: ${smtpUser}</p></div>`
+    );
+    res.json({ success: sent, smtpUser, to: testEmail, timestamp: new Date().toISOString() });
+  } catch (e: any) {
+    res.json({ success: false, error: e.message });
+  }
+});
+
 // Global Error Handler
 app.use(errorHandler);
 

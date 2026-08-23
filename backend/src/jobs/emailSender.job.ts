@@ -26,7 +26,10 @@ export function defineEmailSenderJob(agenda: Agenda): void {
     }
 
     try {
-      await EmailService.sendEmail(recipient.email, notification.subject, notification.body);
+      const sent = await EmailService.sendEmail(recipient.email, notification.subject, notification.body);
+      if (!sent) {
+        throw new Error(`SMTP transport returned failure for ${recipient.email}. Check SMTP_USER and SMTP_PASS env vars on Render.`);
+      }
       notification.status = NotificationStatus.SENT;
       notification.lastAttemptAt = new Date();
       notification.errorMessage = undefined;
