@@ -11,7 +11,7 @@ export class SlotService {
    * 1. Inspecting doctor working hours from DoctorProfile
    * 2. Generating discrete time slots by slotDurationMinutes
    * 3. Checking existing HELD & CONFIRMED appointments
-   * 4. Flagging unavailable slots accurately
+   * 4. Flagging unavailable and past slots accurately
    */
   static async getAvailableSlots(doctorId: string | Types.ObjectId, dateStr: string): Promise<SlotInfo[]> {
     const doctorProfile = await DoctorProfile.findOne({ userId: doctorId });
@@ -42,11 +42,17 @@ export class SlotService {
       activeAppointments.map((app) => app.slotStartTime.getTime())
     );
 
-    // Mark availability
-    return allSlots.map((slot) => ({
-      startTime: slot.startTime,
-      endTime: slot.endTime,
-      available: !bookedStartTimes.has(slot.startTime.getTime())
-    }));
+    const now = new Date();
+
+    // Mark availability: slot must not be booked AND must be strictly in the future (removes passed slots for today)
+    return allSlots.map((slot) => {
+      const isPast = slot.startTime.getTime() <= now.getTime();
+      const isBooked = bookedStartTimes.has(slot.startTime.getTime());
+      return {
+        startTime: slot.startTime,
+        endTime: slot.endTime,
+        available: !isBooked && !isPast
+      };
+    });
   }
 }

@@ -48,6 +48,10 @@ export class BookingService {
       throw new NotFoundError('Doctor profile not found');
     }
 
+    if (slotStartTime.getTime() <= Date.now()) {
+      throw new ValidationError('Cannot book an appointment slot in the past. Please choose an upcoming available time.');
+    }
+
     if (!isWithinWorkingHours(slotStartTime, doctorProfile.workingHours)) {
       throw new ValidationError('Requested slot time falls outside doctor working hours');
     }
