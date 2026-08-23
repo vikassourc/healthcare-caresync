@@ -7,10 +7,16 @@ import { AuthService } from './auth.service';
 
 export class CalendarService {
   private static getOAuthClient() {
+    const clientId = process.env.GOOGLE_CLIENT_ID || env.GOOGLE_CLIENT_ID || '';
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET || env.GOOGLE_CLIENT_SECRET || '';
+    const redirectUri = process.env.RENDER || process.env.NODE_ENV === 'production'
+      ? 'https://healthcare-caresync.onrender.com/api/calendar/callback'
+      : (env.GOOGLE_REDIRECT_URI || 'http://localhost:5000/api/calendar/callback');
+
     return new google.auth.OAuth2(
-      env.GOOGLE_CLIENT_ID || 'mock_client_id',
-      env.GOOGLE_CLIENT_SECRET || 'mock_client_secret',
-      env.GOOGLE_REDIRECT_URI
+      clientId,
+      clientSecret,
+      redirectUri
     );
   }
 
@@ -23,8 +29,7 @@ export class CalendarService {
         'https://www.googleapis.com/auth/userinfo.email',
         'openid'
       ],
-      state: state || 'google_auth_login',
-      prompt: 'select_account'
+      state: state || 'google_auth_login'
     });
   }
 
