@@ -2,7 +2,7 @@ services:
   # 1. Backend Web Service
   - type: web
     name: caresync-backend
-    runtime: node
+    env: node
     plan: free
     rootDir: backend
     buildCommand: npm install && npm run build
@@ -50,8 +50,9 @@ services:
         sync: false
 
   # 2. Frontend Static Site
-  - type: static
+  - type: web
     name: caresync-frontend
+    env: static
     rootDir: frontend
     buildCommand: npm install && npm run build
     staticPublishPath: ./dist
