@@ -10,17 +10,30 @@ export interface EmailAttachment {
 }
 
 export class EmailService {
+  private static cachedTransporter: nodemailer.Transporter | null = null;
+
   private static getTransporter() {
+    if (this.cachedTransporter) {
+      return this.cachedTransporter;
+    }
+
     const smtpUser = env.SMTP_USER || 'vsrivastava873@gmail.com';
     const smtpPass = (env.SMTP_PASS || 'tiztxgffnamwgggc').replace(/\s+/g, '');
 
-    return nodemailer.createTransport({
+    this.cachedTransporter = nodemailer.createTransport({
       service: 'gmail',
+      pool: true,
+      maxConnections: 5,
+      maxMessages: 100,
+      rateDelta: 1000,
+      rateLimit: 10,
       auth: {
         user: smtpUser,
         pass: smtpPass
       }
     });
+
+    return this.cachedTransporter;
   }
 
   static async sendEmail(
