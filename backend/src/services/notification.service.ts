@@ -57,25 +57,22 @@ export class NotificationService {
       });
     }
 
-    // 1. Instant Direct Delivery Attempt
+    // 1. Direct Immediate Delivery Attempt
     try {
       const recipient = await User.findById(params.recipientId);
       if (recipient?.email) {
         logger.info(`Immediate email dispatch to user's registered address: ${recipient.email}`);
-        EmailService.sendEmail(recipient.email, params.subject, params.body).then(async (sent) => {
-          if (sent) {
-            await NotificationLog.findByIdAndUpdate(notification._id, {
-              status: NotificationStatus.SENT,
-              lastAttemptAt: new Date()
-            });
-            logger.info(`Notification status updated to SENT for ${recipient.email}`);
-          }
-        }).catch((err) => {
-          logger.warn(`Immediate dispatch error, falling back to Agenda queue: ${err.message}`);
-        });
+        const sent = await EmailService.sendEmail(recipient.email, params.subject, params.body);
+        if (sent) {
+          notification.status = NotificationStatus.SENT;
+          notification.lastAttemptAt = new Date();
+          await notification.save();
+          logger.info(`Notification status updated to SENT for ${recipient.email}`);
+          return notification;
+        }
       }
     } catch (err: any) {
-      logger.warn(`Failed initial user lookup for notification: ${err.message}`);
+      logger.warn(`Immediate dispatch error, falling back to Agenda queue: ${err.message}`);
     }
 
     // 2. Queue in Agenda worker for guaranteed retry mechanism

@@ -13,36 +13,6 @@ export class EmailService {
   private static cachedTransporter: nodemailer.Transporter | null = null;
 
   private static getTransporter() {
-    if (this.cachedTransporter) {
-      return this.cachedTransporter;
-    }
-
-    const smtpUser = process.env.SMTP_USER || env.SMTP_USER || 'vsrivastava873@gmail.com';
-    const smtpPass = (process.env.SMTP_PASS || env.SMTP_PASS || 'tiztxgffnamwgggc').replace(/\s+/g, '');
-
-    logger.info(`[EmailService] Creating Gmail SMTP pool transport for user: ${smtpUser}`);
-
-    this.cachedTransporter = nodemailer.createTransport({
-      service: 'gmail',
-      pool: true,
-      maxConnections: 3,
-      maxMessages: 50,
-      rateDelta: 1000,
-      rateLimit: 5,
-      auth: {
-        user: smtpUser,
-        pass: smtpPass
-      },
-      // Auto-reconnect on idle timeout
-      socketTimeout: 30000,
-      connectionTimeout: 15000
-    });
-
-    return this.cachedTransporter;
-  }
-
-  /** Creates a fresh non-pooled transport for single-shot retry */
-  private static getFreshTransporter() {
     const smtpUser = process.env.SMTP_USER || env.SMTP_USER || 'vsrivastava873@gmail.com';
     const smtpPass = (process.env.SMTP_PASS || env.SMTP_PASS || 'tiztxgffnamwgggc').replace(/\s+/g, '');
 
@@ -78,31 +48,15 @@ export class EmailService {
       }));
     }
 
-    // 1. Primary: Pooled Gmail transport
+    // 1. Primary: Direct Gmail SMTP
     try {
       const transporter = this.getTransporter();
       const info = await transporter.sendMail(mailOptions);
       logger.info(`[EmailService] Email successfully delivered to ${to}. MessageId: ${info.messageId}`);
+      try { transporter.close(); } catch (_) {}
       return true;
     } catch (err: any) {
-      logger.warn(`[EmailService] Pooled transport error for ${to}: ${err.message} (code: ${err.code})`);
-      // Reset the cached pool so next call creates a fresh connection
-      if (this.cachedTransporter) {
-        try { this.cachedTransporter.close(); } catch (_) {}
-        this.cachedTransporter = null;
-      }
-    }
-
-    // 2. Fallback: Fresh non-pooled Gmail transport (handles stale pool issues)
-    try {
-      logger.info(`[EmailService] Retrying with fresh non-pooled transport for ${to}...`);
-      const freshTransporter = this.getFreshTransporter();
-      const info = await freshTransporter.sendMail(mailOptions);
-      logger.info(`[EmailService] Fresh transport delivery successful to ${to}. MessageId: ${info.messageId}`);
-      freshTransporter.close();
-      return true;
-    } catch (err: any) {
-      logger.warn(`[EmailService] Fresh transport also failed for ${to}: ${err.message}`);
+      logger.warn(`[EmailService] Gmail direct delivery error for ${to}: ${err.message}`);
     }
 
     // 3. Last resort: Resend HTTP API (if configured)
