@@ -17,23 +17,42 @@ export class EmailService {
       return this.cachedTransporter;
     }
 
-    const smtpUser = env.SMTP_USER || 'vsrivastava873@gmail.com';
-    const smtpPass = (env.SMTP_PASS || 'tiztxgffnamwgggc').replace(/\s+/g, '');
+    const smtpUser = process.env.SMTP_USER || env.SMTP_USER || 'vsrivastava873@gmail.com';
+    const smtpPass = (process.env.SMTP_PASS || env.SMTP_PASS || 'tiztxgffnamwgggc').replace(/\s+/g, '');
+
+    logger.info(`[EmailService] Creating Gmail SMTP pool transport for user: ${smtpUser}`);
 
     this.cachedTransporter = nodemailer.createTransport({
       service: 'gmail',
       pool: true,
-      maxConnections: 5,
-      maxMessages: 100,
+      maxConnections: 3,
+      maxMessages: 50,
       rateDelta: 1000,
-      rateLimit: 10,
+      rateLimit: 5,
+      auth: {
+        user: smtpUser,
+        pass: smtpPass
+      },
+      // Auto-reconnect on idle timeout
+      socketTimeout: 30000,
+      connectionTimeout: 15000
+    });
+
+    return this.cachedTransporter;
+  }
+
+  /** Creates a fresh non-pooled transport for single-shot retry */
+  private static getFreshTransporter() {
+    const smtpUser = process.env.SMTP_USER || env.SMTP_USER || 'vsrivastava873@gmail.com';
+    const smtpPass = (process.env.SMTP_PASS || env.SMTP_PASS || 'tiztxgffnamwgggc').replace(/\s+/g, '');
+
+    return nodemailer.createTransport({
+      service: 'gmail',
       auth: {
         user: smtpUser,
         pass: smtpPass
       }
     });
-
-    return this.cachedTransporter;
   }
 
   static async sendEmail(
@@ -42,34 +61,51 @@ export class EmailService {
     html: string,
     attachments?: EmailAttachment[]
   ): Promise<boolean> {
-    // 1. Primary: Nodemailer Gmail Service
+    const fromAddress = process.env.EMAIL_FROM || env.EMAIL_FROM || env.SMTP_USER || 'vsrivastava873@gmail.com';
+
+    const mailOptions: any = {
+      from: `CareSync Healthcare <${fromAddress}>`,
+      to,
+      subject,
+      html
+    };
+
+    if (attachments && attachments.length > 0) {
+      mailOptions.attachments = attachments.map((att) => ({
+        filename: att.filename,
+        content: att.content,
+        contentType: att.contentType
+      }));
+    }
+
+    // 1. Primary: Pooled Gmail transport
     try {
       const transporter = this.getTransporter();
-      const fromAddress = env.EMAIL_FROM || env.SMTP_USER || 'vsrivastava873@gmail.com';
-
-      const mailOptions: any = {
-        from: `CareSync Healthcare <${fromAddress}>`,
-        to,
-        subject,
-        html
-      };
-
-      if (attachments && attachments.length > 0) {
-        mailOptions.attachments = attachments.map((att) => ({
-          filename: att.filename,
-          content: att.content,
-          contentType: att.contentType
-        }));
-      }
-
       const info = await transporter.sendMail(mailOptions);
       logger.info(`[EmailService] Email successfully delivered to ${to}. MessageId: ${info.messageId}`);
       return true;
     } catch (err: any) {
-      logger.warn(`[EmailService] Primary Gmail service error for ${to}: ${err.message}`);
+      logger.warn(`[EmailService] Pooled transport error for ${to}: ${err.message} (code: ${err.code})`);
+      // Reset the cached pool so next call creates a fresh connection
+      if (this.cachedTransporter) {
+        try { this.cachedTransporter.close(); } catch (_) {}
+        this.cachedTransporter = null;
+      }
     }
 
-    // 2. Fallback: Resend HTTP API (if configured)
+    // 2. Fallback: Fresh non-pooled Gmail transport (handles stale pool issues)
+    try {
+      logger.info(`[EmailService] Retrying with fresh non-pooled transport for ${to}...`);
+      const freshTransporter = this.getFreshTransporter();
+      const info = await freshTransporter.sendMail(mailOptions);
+      logger.info(`[EmailService] Fresh transport delivery successful to ${to}. MessageId: ${info.messageId}`);
+      freshTransporter.close();
+      return true;
+    } catch (err: any) {
+      logger.warn(`[EmailService] Fresh transport also failed for ${to}: ${err.message}`);
+    }
+
+    // 3. Last resort: Resend HTTP API (if configured)
     const resendKey = process.env.RESEND_API_KEY || '';
     if (resendKey) {
       try {
